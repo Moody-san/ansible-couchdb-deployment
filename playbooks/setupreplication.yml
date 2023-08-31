@@ -1,0 +1,17 @@
+- name: Get default ipv4 ip & create database
+  hosts: [db1,db2]
+  become: true
+  vars:
+    password: "{{ lookup('env', 'COUCHDBPW') }}"
+  roles:
+    - rep_prereq
+
+- name: Setup Replication (db1 -> db2 && db2 -> db1)
+  hosts: db1
+  become: true
+  vars:
+    password: "{{ lookup('env', 'COUCHDBPW') }}"
+    source_endpoint: "{{ hostvars[groups['db1'][0]]['endpoint_ip'] }}"
+    target_endpoint: "{{ hostvars[groups['db2'][0]]['endpoint_ip'] }}"
+  roles:
+    - replicatedb

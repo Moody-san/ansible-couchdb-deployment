@@ -1,0 +1,15 @@
+- name: Get default ipv4 ip
+  hosts: [db1,db2]
+  become: true
+  roles:
+    - failoverprereq
+
+- name: Setup Failover
+  hosts: masters
+  become: true
+  vars:
+    password: "{{ lookup('env', 'COUCHDBPW') }}"
+    main_ip: "{{ hostvars[groups['db1'][0]]['endpoint_ip'] }}"
+    backup_ip: "{{ hostvars[groups['db2'][0]]['endpoint_ip'] }}"
+  roles:
+    - deployfailoverscript

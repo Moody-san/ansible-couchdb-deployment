@@ -1,0 +1,86 @@
+- name: Copy shell script
+  copy:
+    content: |
+      #!/bin/bash
+
+      HEALTH_CHECK_TIMEOUT=5
+      main="{{ main_ip }}"
+      backup="{{ backup_ip }}"
+
+      check_backend_health() {
+          local backend_ip=$1
+          if curl -s --max-time ${HEALTH_CHECK_TIMEOUT} "http://admin:{{password}}@${backend_ip}:5984" >>/dev/null; then
+              return 0
+          else
+              return 1
+          fi
+      }
+
+      update_endpoint_yaml() {
+          local current_ip=$1
+          local new_ip=$2
+          sed -i "s/ip: ${current_ip}/ip: ${new_ip}/" dynamic-db-endpoint.yaml
+      }
+
+      current_ip="${main}"
+
+      if [ ! -f dynamic-db-service.yaml ]; then
+          cat <<EOF > dynamic-db-service.yaml
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: db
+      spec:
+        ports:
+          - protocol: TCP
+            port: 80
+            targetPort: 80
+      EOF
+      fi
+
+      if [ ! -f dynamic-db-endpoint.yaml ]; then
+          cat <<EOF > dynamic-db-endpoint.yaml
+      apiVersion: v1
+      kind: Endpoints
+      metadata:
+        name: db
+      subsets:
+        - addresses:
+            - ip: ${main}
+          ports:
+            - port: 5984
+      EOF
+      fi
+      kubectl apply -f dynamic-db-service.yaml >> log 2>&1
+      kubectl apply -f dynamic-db-endpoint.yaml >> log 2>&1
+      while true; do
+          if [ "${current_ip}" == "${main}" ] && check_backend_health "${current_ip}"; then
+              continue
+          else
+              if [ "${current_ip}" != "${main}" ] && check_backend_health "${main}"; then
+                  echo "Main IP is healthy. Switching back to main..."
+                  new_ip="${main}"
+              elif [ "${current_ip}" == "${main}" ] && check_backend_health "${backup}"; then
+                  echo "Backup IP is healthy. Updating..."
+                  new_ip="${backup}"
+              else
+                  continue
+              fi
+              update_endpoint_yaml "${current_ip}" "${new_ip}"
+              current_ip="${new_ip}"
+              kubectl delete endpoints db >> log 2>&1
+              kubectl apply -f dynamic-db-endpoint.yaml >> log 2>&1
+              echo "Endpoint updated with new IP: ${new_ip}"
+          fi
+          sleep 30 
+      done
+    dest: health.sh
+    mode: 0766
+    owner: ubuntu
+    group: ubuntu
+
+- name: Run health.sh in the background
+  shell: nohup ./health.sh >> log 2>&1 &
+  become_user: ubuntu
+  become: true
+  

@@ -1,0 +1,119 @@
+- name: Stop unattended-upgrades service
+  service:
+    name: unattended-upgrades
+    state: stopped
+
+- name: Disable unattended-upgrades service on boot
+  systemd:
+    name: unattended-upgrades
+    enabled: no
+
+- name: Wait for cloud-init / user-data to finish
+  command: cloud-init status --wait
+  changed_when: false
+
+- name: Update apt cache
+  apt:
+    force_apt_get: yes
+    update_cache: yes
+
+- name: Upgrade all packages
+  apt:
+    force_apt_get: yes
+    upgrade: dist
+
+- name: Reboot the system
+  reboot:
+    reboot_timeout: 200
+    pre_reboot_delay: 30
+  async: 0
+  poll: 0
+  ignore_errors: true
+
+- name: Wait for cloud-init / user-data to finish
+  command: cloud-init status --wait
+  changed_when: false
+
+- name: Install iptables-persistent
+  package:
+    name: iptables-persistent
+    state: present
+
+- name: Flush iptables rules
+  shell: iptables -F
+
+- name: Allow FORWARD traffic
+  shell: iptables -A FORWARD -j ACCEPT
+
+- name: Allow INPUT traffic
+  shell: iptables -A INPUT -j ACCEPT
+
+- name: Allow OUTPUT traffic
+  shell: iptables -A OUTPUT -j ACCEPT
+
+- name: Save IPv4 iptables rules
+  become_user: root
+  shell: iptables-save > /etc/iptables/rules.v4
+
+- name: Save IPv6 iptables rules
+  become_user: root
+  shell: ip6tables-save > /etc/iptables/rules.v6
+
+- name: Install required packages
+  apt:
+    name:
+      - curl
+      - apt-transport-https
+      - gnupg
+    state: present
+
+- name: Import CouchDB repository key
+  shell: >
+    curl https://couchdb.apache.org/repo/keys.asc |
+    gpg --dearmor |
+    sudo tee /usr/share/keyrings/couchdb-archive-keyring.gpg >/dev/null 2>&1
+  args:
+    executable: /bin/bash
+    creates: /usr/share/keyrings/couchdb-archive-keyring.gpg
+
+- name: Get OS release information
+  shell: source /etc/os-release && echo $VERSION_CODENAME
+  args:
+    executable: /bin/bash
+  register: codename_result
+
+- name: Add CouchDB repository
+  lineinfile:
+    path: /etc/apt/sources.list.d/couchdb.list
+    line: "deb [signed-by=/usr/share/keyrings/couchdb-archive-keyring.gpg] https://apache.jfrog.io/artifactory/couchdb-deb/ {{ codename_result.stdout }} main"
+    create: yes
+    
+- name: Update APT cache
+  apt:
+    update_cache: yes
+
+- name: Install debconf-utils package
+  apt:
+    name: debconf-utils
+    state: present
+
+- name: Set CouchDB debconf selections
+  debconf:
+    name: couchdb
+    question: "{{ item.question }}"
+    value: "{{ item.value }}"
+    vtype: "{{ item.vtype }}"
+  loop:
+    - { question: couchdb/adminpass, value: "{{password}}", vtype: password }
+    - { question: couchdb/adminpass_again, value: "{{password}}", vtype: password }
+    - { question: couchdb/cookie, value: "{{password}}", vtype: string }
+    - { question: couchdb/nodename, value: couchdb@localhost, vtype: string }
+    - { question: couchdb/bindaddress, value: 0.0.0.0, vtype: string }
+    - { question: couchdb/mode, value: standalone, vtype: select }
+    - { question: couchdb/postrm_remove_databases, value: false, vtype: boolean }
+    - { question: couchdb/have_1x_databases, value: note, vtype: note }
+
+- name: Install CouchDB package
+  apt:
+    name: couchdb
+    state: present

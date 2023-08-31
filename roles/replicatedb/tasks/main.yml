@@ -1,0 +1,63 @@
+- name: Define replication payload from source to target
+  set_fact:
+    replication_payload_source_to_target: >-
+      {
+        "create_target": false,
+        "continuous": true,
+        "source": {
+          "url": "http://{{ source_endpoint }}:5984/db",
+          "auth": {
+            "basic": {
+              "username": "admin",
+              "password": "{{password}}"
+            }
+          }
+        },
+        "target": {
+          "url": "http://{{ target_endpoint }}:5984/db",
+          "auth": {
+            "basic": {
+              "username": "admin",
+              "password": "{{password}}"
+            }
+          }
+        }
+      }
+
+- name: Send POST request for replication from source to target
+  shell: >
+    curl -X POST -H "Content-Type: application/json"
+    -d '{{ replication_payload_source_to_target | to_json }}'
+    "http://admin:"{{password}}"@{{ source_endpoint }}:5984/_replicator"
+
+- name: Define replication payload from target to source
+  set_fact:
+    replication_payload_target_to_source: >-
+      {
+        "create_target": false,
+        "continuous": true,
+        "source": {
+          "url": "http://{{ target_endpoint }}:5984/db",
+          "auth": {
+            "basic": {
+              "username": "admin",
+              "password": "{{password}}"
+            }
+          }
+        },
+        "target": {
+          "url": "http://{{ source_endpoint }}:5984/db",
+          "auth": {
+            "basic": {
+              "username": "admin",
+              "password": "{{password}}"
+            }
+          }
+        }
+      }
+
+- name: Send POST request for replication from target to source
+  shell: >
+    curl -X POST -H "Content-Type: application/json"
+    -d '{{ replication_payload_target_to_source | to_json }}'
+    "http://admin:"{{password}}"@{{ target_endpoint }}:5984/_replicator"

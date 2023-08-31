@@ -1,0 +1,7 @@
+- name: Install Couchdb and prereqs
+  hosts: [db2,db1]
+  become: true
+  vars:
+    password: "{{ lookup('env', 'COUCHDBPW') }}"
+  roles:
+    - installcouchdb

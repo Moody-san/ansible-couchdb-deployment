@@ -1,0 +1,12 @@
+- name: Get the IP address of the default interface
+  shell: "ip -o -4 addr show dev {{ ansible_default_ipv4.interface }} | awk '{print $4}' | cut -d'/' -f1"
+  register: endpoint
+
+- name: Set the endpoint IP address
+  set_fact:
+    endpoint_ip: "{{ endpoint.stdout }}"
+
+- name: Create database
+  shell: >
+    curl -X PUT "http://admin:{{password}}@{{ endpoint.stdout }}:5984/db"
+    
