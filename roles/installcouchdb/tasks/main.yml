@@ -17,23 +17,6 @@
     force_apt_get: yes
     update_cache: yes
 
-- name: Upgrade all packages
-  apt:
-    force_apt_get: yes
-    upgrade: dist
-
-- name: Reboot the system
-  reboot:
-    reboot_timeout: 200
-    pre_reboot_delay: 30
-  async: 0
-  poll: 0
-  ignore_errors: true
-
-- name: Wait for cloud-init / user-data to finish
-  command: cloud-init status --wait
-  changed_when: false
-
 - name: Install iptables-persistent
   package:
     name: iptables-persistent
